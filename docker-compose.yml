@@ -1,16 +1,157 @@
-version: '3.9'
+version: "3.9"
 
 services:
+  # ==========================
+  # Jenkins
+  # ==========================
   jenkins:
     image: jenkins/jenkins:lts
     container_name: jenkins
     restart: unless-stopped
+    user: root
     ports:
-      - "8080:8080"   # Porta de acesso ao Jenkins
-      - "50000:50000" # Porta usada para comunicação com agentes
+      - "8080:8080"
+      - "50000:50000"
     volumes:
-      - jenkins_home:/var/jenkins_home
-      - /var/run/docker.sock:/var/run/docker.sock  # Permite que Jenkins use Docker dentro do host
+      - ./jenkins/data:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - devops
+
+  # ==========================
+  # Postgres (Sentry)
+  # ==========================
+  sentry-postgres:
+    image: postgres:14
+    container_name: sentry-postgres
+    environment:
+      POSTGRES_USER: sentry
+      POSTGRES_PASSWORD: sentry
+      POSTGRES_DB: sentry
+    volumes:
+      - sentry-postgres:/var/lib/postgresql/data
+    networks:
+      - devops
+
+  # ==========================
+  # Redis (Sentry)
+  # ==========================
+  sentry-redis:
+    image: redis:7
+    container_name: sentry-redis
+    networks:
+      - devops
+
+  # ==========================
+  # Sentry
+  # ==========================
+  sentry:
+    image: getsentry/sentry:23.10.0
+    container_name: sentry
+    depends_on:
+      - sentry-postgres
+      - sentry-redis
+    ports:
+      - "9000:9000"
+    environment:
+      SENTRY_SECRET_KEY: "CHANGE_ME_SUPER_SECRET"
+      SENTRY_DB_USER: sentry
+      SENTRY_DB_PASSWORD: sentry
+      SENTRY_DB_NAME: sentry
+      SENTRY_DB_HOST: sentry-postgres
+      SENTRY_REDIS_HOST: sentry-redis
+    volumes:
+      - sentry-data:/var/lib/sentry/files
+    networks:
+      - devops
+
+  sentry-worker:
+    image: getsentry/sentry:23.10.0
+    container_name: sentry-worker
+    depends_on:
+      - sentry
+    command: sentry run worker
+    environment:
+      SENTRY_SECRET_KEY: "CHANGE_ME_SUPER_SECRET"
+      SENTRY_DB_USER: sentry
+      SENTRY_DB_PASSWORD: sentry
+      SENTRY_DB_NAME: sentry
+      SENTRY_DB_HOST: sentry-postgres
+      SENTRY_REDIS_HOST: sentry-redis
+    networks:
+      - devops
+
+  sentry-cron:
+    image: getsentry/sentry:23.10.0
+    container_name: sentry-cron
+    depends_on:
+      - sentry
+    command: sentry run cron
+    environment:
+      SENTRY_SECRET_KEY: "CHANGE_ME_SUPER_SECRET"
+    networks:
+      - devops
+
+  # ==========================
+  # Prometheus
+  # ==========================
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - devops
+
+  # ==========================
+  # Grafana
+  # ==========================
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/data:/var/lib/grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    networks:
+      - devops
+
+  # ==========================
+  # Node Exporter
+  # ==========================
+  node-exporter:
+    image: prom/node-exporter
+    container_name: node-exporter
+    ports:
+      - "9100:9100"
+    networks:
+      - devops
+
+  # ==========================
+  # cAdvisor
+  # ==========================
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    ports:
+      - "8081:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - devops
 
 volumes:
-  jenkins_home:
+  sentry-postgres:
+  sentry-data:
+
+networks:
+  devops:
+    driver: bridge
