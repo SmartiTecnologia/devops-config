@@ -1,157 +1,135 @@
 version: "3.9"
 
 services:
-  # ==========================
-  # Jenkins
-  # ==========================
+
+  ################################
+  # JENKINS
+  ################################
   jenkins:
     image: jenkins/jenkins:lts
     container_name: jenkins
-    restart: unless-stopped
-    user: root
+    restart: always
     ports:
-      - "8080:8080"
+      - "8081:8080"
       - "50000:50000"
     volumes:
-      - ./jenkins/data:/var/jenkins_home
-      - /var/run/docker.sock:/var/run/docker.sock
+      - jenkins_data:/var/jenkins_home
     networks:
       - devops
 
-  # ==========================
-  # Postgres (Sentry)
-  # ==========================
+  ################################
+  # SENTRY DEPENDENCIES
+  ################################
   sentry-postgres:
     image: postgres:14
     container_name: sentry-postgres
+    restart: always
     environment:
+      POSTGRES_DB: sentry
       POSTGRES_USER: sentry
       POSTGRES_PASSWORD: sentry
-      POSTGRES_DB: sentry
     volumes:
-      - sentry-postgres:/var/lib/postgresql/data
+      - sentry_postgres:/var/lib/postgresql/data
     networks:
       - devops
 
-  # ==========================
-  # Redis (Sentry)
-  # ==========================
   sentry-redis:
     image: redis:7
     container_name: sentry-redis
+    restart: always
     networks:
       - devops
 
-  # ==========================
-  # Sentry
-  # ==========================
+  ################################
+  # SENTRY
+  ################################
   sentry:
-    image: getsentry/sentry:23.10.0
+    image: getsentry/sentry:24.1.0
     container_name: sentry
+    restart: always
+    env_file:
+      - ./sentry/.env
     depends_on:
       - sentry-postgres
       - sentry-redis
     ports:
       - "9000:9000"
-    environment:
-      SENTRY_SECRET_KEY: "CHANGE_ME_SUPER_SECRET"
-      SENTRY_DB_USER: sentry
-      SENTRY_DB_PASSWORD: sentry
-      SENTRY_DB_NAME: sentry
-      SENTRY_DB_HOST: sentry-postgres
-      SENTRY_REDIS_HOST: sentry-redis
     volumes:
-      - sentry-data:/var/lib/sentry/files
+      - sentry_data:/var/lib/sentry/files
     networks:
       - devops
 
   sentry-worker:
-    image: getsentry/sentry:23.10.0
-    container_name: sentry-worker
+    image: getsentry/sentry:24.1.0
+    command: run worker
+    env_file:
+      - ./sentry/.env
     depends_on:
       - sentry
-    command: sentry run worker
-    environment:
-      SENTRY_SECRET_KEY: "CHANGE_ME_SUPER_SECRET"
-      SENTRY_DB_USER: sentry
-      SENTRY_DB_PASSWORD: sentry
-      SENTRY_DB_NAME: sentry
-      SENTRY_DB_HOST: sentry-postgres
-      SENTRY_REDIS_HOST: sentry-redis
     networks:
       - devops
 
   sentry-cron:
-    image: getsentry/sentry:23.10.0
-    container_name: sentry-cron
+    image: getsentry/sentry:24.1.0
+    command: run cron
+    env_file:
+      - ./sentry/.env
     depends_on:
       - sentry
-    command: sentry run cron
-    environment:
-      SENTRY_SECRET_KEY: "CHANGE_ME_SUPER_SECRET"
     networks:
       - devops
 
-  # ==========================
-  # Prometheus
-  # ==========================
+  ################################
+  # PROMETHEUS
+  ################################
   prometheus:
     image: prom/prometheus
     container_name: prometheus
-    ports:
-      - "9090:9090"
+    restart: always
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
     networks:
       - devops
 
-  # ==========================
-  # Grafana
-  # ==========================
+  ################################
+  # GRAFANA
+  ################################
   grafana:
     image: grafana/grafana
     container_name: grafana
+    restart: always
     ports:
       - "3000:3000"
     volumes:
-      - ./grafana/data:/var/lib/grafana
-    environment:
-      GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_ADMIN_PASSWORD: admin
+      - grafana_data:/var/lib/grafana
     networks:
       - devops
 
-  # ==========================
-  # Node Exporter
-  # ==========================
-  node-exporter:
-    image: prom/node-exporter
-    container_name: node-exporter
-    ports:
-      - "9100:9100"
-    networks:
-      - devops
-
-  # ==========================
-  # cAdvisor
-  # ==========================
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
-    container_name: cadvisor
-    ports:
-      - "8081:8080"
+  ################################
+  # OPENTELEMETRY COLLECTOR
+  ################################
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector.yml"]
     volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
+      - ./otel/otel-collector.yml:/etc/otel-collector.yml
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8889:8889"
     networks:
       - devops
-
-volumes:
-  sentry-postgres:
-  sentry-data:
 
 networks:
   devops:
-    driver: bridge
+
+volumes:
+  jenkins_data:
+  sentry_postgres:
+  sentry_data:
+  prometheus_data:
+  grafana_data:
