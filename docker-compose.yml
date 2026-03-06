@@ -18,68 +18,6 @@ services:
       - devops
 
   ################################
-  # SENTRY DEPENDENCIES
-  ################################
-  sentry-postgres:
-    image: postgres:14
-    container_name: sentry-postgres
-    restart: always
-    environment:
-      POSTGRES_DB: sentry
-      POSTGRES_USER: sentry
-      POSTGRES_PASSWORD: sentry
-    volumes:
-      - sentry_postgres:/var/lib/postgresql/data
-    networks:
-      - devops
-
-  sentry-redis:
-    image: redis:7
-    container_name: sentry-redis
-    restart: always
-    networks:
-      - devops
-
-  ################################
-  # SENTRY
-  ################################
-  sentry:
-    image: getsentry/sentry:24.1.0
-    container_name: sentry
-    restart: always
-    env_file:
-      - ./sentry/.env
-    depends_on:
-      - sentry-postgres
-      - sentry-redis
-    ports:
-      - "9000:9000"
-    volumes:
-      - sentry_data:/var/lib/sentry/files
-    networks:
-      - devops
-
-  sentry-worker:
-    image: getsentry/sentry:24.1.0
-    command: run worker
-    env_file:
-      - ./sentry/.env
-    depends_on:
-      - sentry
-    networks:
-      - devops
-
-  sentry-cron:
-    image: getsentry/sentry:24.1.0
-    command: run cron
-    env_file:
-      - ./sentry/.env
-    depends_on:
-      - sentry
-    networks:
-      - devops
-
-  ################################
   # PROMETHEUS
   ################################
   prometheus:
@@ -129,7 +67,5 @@ networks:
 
 volumes:
   jenkins_data:
-  sentry_postgres:
-  sentry_data:
   prometheus_data:
   grafana_data:
